@@ -1,0 +1,21 @@
+# ===================================================================
+# PyTorch (GPU Version) 에서 아래 3개 패키지는 
+# PyTorch 공식 홈페이지에서 CUDA 버전에 맞는 명령어로 별도 설치해야 합니다. 
+# (https://pytorch.org/get-started/locally/)
+# 
+# 예시 (CUDA 12.6):
+# pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
+# ===================================================================
+# torch==2.8.0+cu126
+# torchvision==0.23.0+cu126
+# torchaudio==2.8.0+cu126
+
+# --- Other Packages ---
+numpy==1.26.0
+librosa==0.10.1
+mido==1.3.2
+pyloudnorm==0.1.1
+soundfile==0.13.1
+tqdm==4.66.1
+audio-separator==0.18.0
+onnxruntime==1.19.2
