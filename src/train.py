@@ -16,37 +16,41 @@ LEARNING_RATE = 0.001
 BATCH_SIZE = 8
 NUM_EPOCHS = 50
 NUM_CLASSES = 8
-POSITIVE_WEIGHTS = [50]*NUM_CLASSES # 클래스 불균형 문제 완화
-CHECKPOINT_DIR = 'checkpoints' # 에포크별 모델 저장 경로
 NUM_WORKERS = 0 # Windows에서는 0으로 설정 (Linux/Mac에서는 CPU 코어 수에 맞게 조절 가능)
+POSITIVE_WEIGHTS = [50]*NUM_CLASSES # 클래스 불균형 문제 완화
+
 RESUME_MODEL = 'models/drum_crnn_epoch_1.pth' # None이면 처음부터 학습 시작
 
 # --- 데이터 경로 설정 ---
+CHECKPOINT_DIR = 'checkpoints' # 에포크별 모델 저장 경로
 TRAIN_DATA_DIR = 'data/train'
 
 
 
-def create_loss_weights(labels, device, left=1, right=6, pos_loss=50.0):
+# def create_loss_weights(labels, device, left=1, right=3, pos_loss=50.0):
 
-    # label과 동일한 크기의 가중치 텐서를 1로 초기화
-    loss_weights = torch.ones_like(labels, device=device)
+#     surround_loss = pos_loss/(left + right)
+
+#     # label과 동일한 크기의 가중치 텐서를 1로 초기화
+#     loss_weights = torch.ones_like(labels, device=device)
     
-    # 라벨 값이 1인 위치(t)의 인덱스를 찾습니다.
-    positive_indices = (labels == 1).nonzero(as_tuple=True) # (배치인덱스리스트, 시간인덱스리스트, 클래스인덱스리스트)
-    if positive_indices[0].numel() == 0:
-        return loss_weights
+#     # 라벨 값이 1인 위치(t)의 인덱스를 찾습니다.
+#     positive_indices = (labels == 1).nonzero(as_tuple=True) # (배치인덱스리스트, 시간인덱스리스트, 클래스인덱스리스트)
+#     if positive_indices[0].numel() == 0:
+#         return loss_weights
 
-    positive_mask = torch.zeros_like(labels, dtype=torch.bool, device=device)
-    for batch, time, class_idx in zip(*positive_indices):
-        start_time = max(0, time - left)
-        end_time = min(labels.shape[1], time + right + 1) 
+#     positive_mask = torch.zeros_like(labels, dtype=torch.bool, device=device)
+#     for batch, time, class_idx in zip(*positive_indices):
+#         start_time = max(0, time - left)
+#         end_time = min(labels.shape[1], time + right + 1)
         
-        positive_mask[batch, start_time:end_time, class_idx] = True
+#         positive_mask[batch, start_time:end_time, class_idx] = True
         
-    # 마스크에 True로 표시된 구간의 loss가중치를 변경
-    loss_weights[positive_mask] = pos_loss
+#     # 마스크에 True로 표시된 구간의 loss가중치를 변경
+#     loss_weights[positive_mask] = surround_loss
+#     loss_weights[positive_indices] = pos_loss
 
-    return loss_weights
+#     return loss_weights
 
 
 
@@ -114,8 +118,8 @@ def main():
 
     # --- 모델(CRNN), 손실 함수(BCEWithLogitsLoss), 옵티마이저(Adam) 정의 ---
     model = DrumCRNN(num_classes=NUM_CLASSES, freq_bins=N_MELS).to(device)
-    # pos_weight_tensor = torch.tensor(POSITIVE_WEIGHTS, device=device) # 클래스 불균형 문제 완화
-    criterion = nn.BCEWithLogitsLoss(reduction='none') # reduction='none'로 설정하여 각 원소별 loss 반환
+    pos_weight_tensor = torch.tensor(POSITIVE_WEIGHTS, device=device) # 클래스 불균형 문제 완화
+    criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight_tensor) # , reduction='none'
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
     start_epoch = 1
@@ -155,11 +159,11 @@ def main():
             target_len = min(outputs.shape[1], labels.shape[1])
             outputs = outputs[:, :target_len, :]
             labels = labels[:, :target_len, :]
-            loss_weights = create_loss_weights(labels, device, left=1, right=6, pos_loss=50.0)
+            # loss_weights = create_loss_weights(labels, device)
 
             # 모델의 출력으로 loss 계산
-            unweighted_loss = criterion(outputs, labels)
-            loss = (unweighted_loss * loss_weights).mean() # 가중치 적용 후 평균 loss 계산
+            loss = criterion(outputs, labels)
+            # loss = (loss * loss_weights).mean() # 가중치 적용 후 평균 loss 계산
 
             optimizer.zero_grad() # 이전에 계산한 가중치 별 gradient 값을 0으로 초기화
             loss.backward() # 가중치 별 gradient 계산

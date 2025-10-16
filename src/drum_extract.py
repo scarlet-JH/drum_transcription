@@ -2,7 +2,7 @@ import os
 import logging # 프로그램 실행 상태 표기
 from audio_separator.separator import Separator
 
-AUDIO_FILENAME = "silly-silly-love"
+AUDIO_FILENAME = "좋은밤좋은꿈"
 AUDIO_PATH = f"songs/{AUDIO_FILENAME}.mp3"
 
 OUTPUT_DIR = "drum_audio" 
@@ -31,6 +31,7 @@ def separate_drums_from_cli(audio_path, output_dir, output_format, model_dir, mo
         output_dir=output_dir,
         output_format=output_format,
         output_single_stem="drums", # 드럼만 추출
+        # model_provider="CUDAExecutionProvider",
         demucs_params={ # Demucs 모델에 맞는 파라미터 설정
             "shifts": 2, # shift 횟수 (shift: 시간차를 두고 여러번 처리하고 평균내는 기법)
             "overlap": 0.25, # 오버랩 비율

@@ -18,4 +18,4 @@ pyloudnorm==0.1.1
 soundfile==0.13.1
 tqdm==4.66.1
 audio-separator==0.18.0
-onnxruntime==1.19.2
+onnxruntime-gpu==1.23.0

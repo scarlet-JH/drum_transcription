@@ -49,7 +49,8 @@ def midi_to_pianoroll(midi_path, num_classes, duration_in_sec):
                 48: 4 ,  50: 4 , 
                 45: 5 ,  47: 5 , 
                 41: 6 ,  43: 6 , 
-                51: 7 ,  53: 7 ,  59: 7 }
+                51: 7 ,  53: 7 ,  59: 7 ,
+                }
 
     absolute_time_sec = 0.0
     for msg in mid:

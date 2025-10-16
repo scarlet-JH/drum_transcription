@@ -70,6 +70,6 @@ for i, msg in enumerate(new_mid2.tracks[1]):
 
 
 
-for epoch in range(1,45+1):
-    model = torch.load(f'models/drum_crnn_epoch_{epoch}.pth')
+for epoch in range(1,30+1):
+    model = torch.load(f'models_50/drum_crnn_epoch_{epoch}.pth')
     print(f"Epoch {epoch}: {model['loss']:.4f}")

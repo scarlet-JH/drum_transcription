@@ -6,16 +6,16 @@ from src.utils import audio_to_spectrogram, output_to_midi
 
 
 NUM_CLASSES = 8 
-BPM = 87
+BPM = 65
 TARGET_LUFS = -23.0 
 
-filename = 'silly-silly-love_(Drums)_htdemucs_ft'
-AUDIO_PATH = f'drum_audio/{filename}.wav'
-OUTPUT_PATH = f'output/{filename}_pred.mid'
+MODEL_NAME = 'models_50'
+MODEL_EPOCH = 38
+MODEL_PATH = f'{MODEL_NAME}/drum_crnn_epoch_{MODEL_EPOCH}.pth'  # 학습된 모델 파일 경로
 
-MODEL_PATH = 'models_50/drum_crnn_epoch_10.pth'  # 학습된 모델 파일 경로
-
-
+filename = '1_funk-groove1_138_beat_4-4_1'
+AUDIO_PATH = f'data/train/{filename}.wav'
+OUTPUT_PATH = f'output/{MODEL_NAME}_{MODEL_EPOCH}epoch_{filename}_pred.mid'
 
 def transcribe(y, sr, model_path, output_path):
     """오디오 파일을 입력받아 MIDI로 변환합니다."""
