@@ -18,7 +18,7 @@ if torch.cuda.is_available():
 import numpy as np
 
 # --- 파라미터 설정 ---
-n_mels = 128
+n_mels = 256
 fmin = 0.0
 fmax = 22050
 
@@ -32,8 +32,8 @@ mel_points = np.linspace(m_min, m_max, n_mels)
 # 3. 분할된 멜 값들을 다시 주파수(Hz)로 변환
 hz_points = 700 * (10**(mel_points / 2595) - 1)
 
-# for v in hz_points:
-#     print(v)
+for v in hz_points:
+    print(v)
 
 
 

@@ -7,7 +7,7 @@ import torch
 SAMPLE_RATE = 44100
 N_FFT = 1024 # FFT를 수행할 샘플의 길이
 HOP_LENGTH = 64
-N_MELS = 128 # freq-bin
+N_MELS = 256 # freq-bin
 DOWNSAMPLE_FACTOR = 4 # pooling에 의한 시간 차원 downsample 비율
 
 

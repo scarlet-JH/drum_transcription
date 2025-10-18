@@ -16,41 +16,13 @@ LEARNING_RATE = 0.001
 BATCH_SIZE = 8
 NUM_EPOCHS = 50
 NUM_CLASSES = 8
-NUM_WORKERS = 0 # Windows에서는 0으로 설정 (Linux/Mac에서는 CPU 코어 수에 맞게 조절 가능)
 POSITIVE_WEIGHTS = [50]*NUM_CLASSES # 클래스 불균형 문제 완화
-
-RESUME_MODEL = 'models/drum_crnn_epoch_1.pth' # None이면 처음부터 학습 시작
+NUM_WORKERS = 0
 
 # --- 데이터 경로 설정 ---
-CHECKPOINT_DIR = 'checkpoints' # 에포크별 모델 저장 경로
-TRAIN_DATA_DIR = 'data/train'
-
-
-
-# def create_loss_weights(labels, device, left=1, right=3, pos_loss=50.0):
-
-#     surround_loss = pos_loss/(left + right)
-
-#     # label과 동일한 크기의 가중치 텐서를 1로 초기화
-#     loss_weights = torch.ones_like(labels, device=device)
-    
-#     # 라벨 값이 1인 위치(t)의 인덱스를 찾습니다.
-#     positive_indices = (labels == 1).nonzero(as_tuple=True) # (배치인덱스리스트, 시간인덱스리스트, 클래스인덱스리스트)
-#     if positive_indices[0].numel() == 0:
-#         return loss_weights
-
-#     positive_mask = torch.zeros_like(labels, dtype=torch.bool, device=device)
-#     for batch, time, class_idx in zip(*positive_indices):
-#         start_time = max(0, time - left)
-#         end_time = min(labels.shape[1], time + right + 1)
-        
-#         positive_mask[batch, start_time:end_time, class_idx] = True
-        
-#     # 마스크에 True로 표시된 구간의 loss가중치를 변경
-#     loss_weights[positive_mask] = surround_loss
-#     loss_weights[positive_indices] = pos_loss
-
-#     return loss_weights
+CHECKPOINT_DIR = '../data/models' # 에포크별 모델 저장 경로
+TRAIN_DATA_DIR = '../data/train_split'
+VALID_DATA_DIR = '../data/valid_split'
 
 
 
@@ -100,6 +72,7 @@ def main():
     # 파서: 터미널에서 인자를 받는 객체
     parser = argparse.ArgumentParser(description='Train a Drum CRNN model.') # 파서 생성
     parser.add_argument('--resume', type=str, default=RESUME_MODEL) # 파서에 학습을 이어서하는 옵션 추가
+    parser.add_argument('--pretrained', type=str, default=None)
     args = parser.parse_args() # 파서로 받은 인자들을 args에 저장
 
     # --- 에포크별 모델 저장을 위한 디렉토리 생성 ---
@@ -111,15 +84,17 @@ def main():
 
     # 데이터셋 준비 
     train_dataset = DrumDataset(data_dir=TRAIN_DATA_DIR, num_classes=NUM_CLASSES)
-
-    # 데이터로더 준비 (DataLoader에 새로 정의한 collate_fn_pad 함수를 지정)
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, 
                               collate_fn=collate_fn_pad, num_workers=NUM_WORKERS) # 멀티프로세싱을 위해 num_workers 조절 가능
 
+    valid_dataset = DrumDataset(data_dir=VALID_DATA_DIR, num_classes=NUM_CLASSES)
+    valid_loader = DataLoader(valid_dataset, batch_size=BATCH_SIZE, shuffle=False, 
+                                collate_fn=collate_fn_pad, num_workers=NUM_WORKERS)
+    
     # --- 모델(CRNN), 손실 함수(BCEWithLogitsLoss), 옵티마이저(Adam) 정의 ---
     model = DrumCRNN(num_classes=NUM_CLASSES, freq_bins=N_MELS).to(device)
     pos_weight_tensor = torch.tensor(POSITIVE_WEIGHTS, device=device) # 클래스 불균형 문제 완화
-    criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight_tensor) # , reduction='none'
+    criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight_tensor)
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
     start_epoch = 1
@@ -134,6 +109,13 @@ def main():
         else:
             print(f"Error: Checkpoint file not found at '{args.resume}'. Starting from scratch.")
 
+    elif args.pretrained:
+        if os.path.isfile(args.pretrained):
+            print(f"Loading pretrained weights from: {args.pretrained}")
+            checkpoint = torch.load(args.pretrained)
+            model.load_state_dict(checkpoint['model_state_dict']) # optimizer와 epoch는 로드하지 않음
+        else:
+            print(f"Error: Pretrained model file not found at '{args.pretrained}'. Starting from scratch.")
 
     # --- 학습 루프 ---
     print("Starting training...")
@@ -159,11 +141,9 @@ def main():
             target_len = min(outputs.shape[1], labels.shape[1])
             outputs = outputs[:, :target_len, :]
             labels = labels[:, :target_len, :]
-            # loss_weights = create_loss_weights(labels, device)
 
             # 모델의 출력으로 loss 계산
             loss = criterion(outputs, labels)
-            # loss = (loss * loss_weights).mean() # 가중치 적용 후 평균 loss 계산
 
             optimizer.zero_grad() # 이전에 계산한 가중치 별 gradient 값을 0으로 초기화
             loss.backward() # 가중치 별 gradient 계산
@@ -174,16 +154,39 @@ def main():
             progress_bar.set_postfix(loss=f"{loss.item():.4f}") # 가중치 업데이트마다 loss 출력
 
         # epoch이 끝난 후, 평균 loss 계산 및 출력
-        avg_loss = running_loss / len(train_loader) 
-        print(f"Epoch [{epoch}/{NUM_EPOCHS}] completed. Average Loss: {avg_loss:.4f}")
+        avg_train_loss = running_loss / len(train_loader) 
+        # print(f"Epoch [{epoch}/{NUM_EPOCHS}] completed. Average Loss: {avg_loss:.4f}")
+
+        model.eval()  # 모델을 평가 모드로 전환 (Dropout 등 비활성화)
+        val_loss = 0.0
+        val_progress_bar = tqdm(valid_loader, desc=f"Epoch {epoch + 1}/{NUM_EPOCHS} [Valid]")
         
+        with torch.no_grad():  # 기울기 계산을 중단하여 메모리 절약 및 속도 향상
+            for spectrograms, labels in val_progress_bar:
+                if spectrograms.numel() == 0: continue
+                spectrograms, labels = spectrograms.to(device), labels.to(device)
+
+                outputs = model(spectrograms)
+                target_len = min(outputs.shape[1], labels.shape[1])
+                outputs = outputs[:, :target_len, :]
+                labels = labels[:, :target_len, :]
+                
+                loss = criterion(outputs, labels)
+                val_loss += loss.item()
+                val_progress_bar.set_postfix(loss=f"{loss.item():.4f}")
+
+        avg_val_loss = val_loss / len(valid_loader)
+        print(f"Epoch [{epoch + 1}/{NUM_EPOCHS}] Train Loss: {avg_train_loss:.4f}, Valid Loss: {avg_val_loss:.4f}")
+
+
         # epoch이 끝난 후, 모델 저장
         checkpoint_path = os.path.join(CHECKPOINT_DIR, f"drum_crnn_epoch_{epoch}.pth")
         torch.save({
             'epoch': epoch,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
-            'loss': avg_loss,
+            'train_loss': avg_train_loss,  # 훈련 손실 추가
+            'valid_loss': avg_val_loss,    # 검증 손실 추가
         }, checkpoint_path)
         print(f"Model checkpoint saved to {checkpoint_path}")
 
