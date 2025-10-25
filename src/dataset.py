@@ -9,6 +9,8 @@ MIN_TIME_STEPS = 100
 MAX_TIME_STEPS = 4000
 
 NOISE_FACTOR = 0.005
+GAIN_DB_MIN = -6.0   # 최소 음량 변화 (dB)
+GAIN_DB_MAX = 6.0    # 최대 음량 변화 (dB)
 
 # __len__, __getitem__ 로 크기가 정의된 이터레이터로 만듬
 class DrumDataset(Dataset):
@@ -39,6 +41,10 @@ class DrumDataset(Dataset):
             # 1. 오디오 파일을 불러옵니다. (+ 학습데이터면 노이즈 추가)
             y, sr = librosa.load(audio_path, sr=SAMPLE_RATE)
             if self.is_train:
+                gain_db = np.random.uniform(GAIN_DB_MIN, GAIN_DB_MAX)
+                gain_linear = 10.0 ** (gain_db / 20.0)
+                y = y * gain_linear
+                
                 noise = np.random.randn(len(y))
                 noised_y = y + NOISE_FACTOR * noise
                 noised_y = np.clip(noised_y, -1.0, 1.0)
