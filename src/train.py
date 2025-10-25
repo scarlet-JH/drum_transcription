@@ -4,7 +4,7 @@ import torch
 import torch.optim as optim
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from src.model import DrumCRNN
+
 from src.dataset import DrumDataset
 from src.utils import N_MELS
 from tqdm import tqdm
@@ -13,16 +13,19 @@ from tqdm import tqdm
 
 # --- 하이퍼파라미터 설정 ---
 LEARNING_RATE = 0.001
-BATCH_SIZE = 8
-NUM_EPOCHS = 50
+BATCH_SIZE = 64
+NUM_EPOCHS = 5
 NUM_CLASSES = 8
-POSITIVE_WEIGHTS = [50]*NUM_CLASSES # 클래스 불균형 문제 완화
-NUM_WORKERS = 0
+# POSITIVE_WEIGHTS = [50]*NUM_CLASSES
+POSITIVE_TIMESTEP_WEIGHT = 30
+NUM_WORKERS = 32
+
 
 # --- 데이터 경로 설정 ---
+from src.model import DrumCRNN
 CHECKPOINT_DIR = '../data/models' # 에포크별 모델 저장 경로
-TRAIN_DATA_DIR = '../data/train_split'
-VALID_DATA_DIR = '../data/valid_split'
+TRAIN_DATA_DIR = '../data/data/train_split'
+VALID_DATA_DIR = '../data/data/valid_split'
 
 
 
@@ -71,7 +74,7 @@ def main():
 
     # 파서: 터미널에서 인자를 받는 객체
     parser = argparse.ArgumentParser(description='Train a Drum CRNN model.') # 파서 생성
-    parser.add_argument('--resume', type=str, default=RESUME_MODEL) # 파서에 학습을 이어서하는 옵션 추가
+    parser.add_argument('--resume', type=str, default=None) # 파서에 학습을 이어서하는 옵션 추가
     parser.add_argument('--pretrained', type=str, default=None)
     args = parser.parse_args() # 파서로 받은 인자들을 args에 저장
 
@@ -83,18 +86,19 @@ def main():
     print(f"Using device: {device}")
 
     # 데이터셋 준비 
-    train_dataset = DrumDataset(data_dir=TRAIN_DATA_DIR, num_classes=NUM_CLASSES)
+    train_dataset = DrumDataset(data_dir=TRAIN_DATA_DIR, num_classes=NUM_CLASSES, is_train=True)
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, 
                               collate_fn=collate_fn_pad, num_workers=NUM_WORKERS) # 멀티프로세싱을 위해 num_workers 조절 가능
 
-    valid_dataset = DrumDataset(data_dir=VALID_DATA_DIR, num_classes=NUM_CLASSES)
+    valid_dataset = DrumDataset(data_dir=VALID_DATA_DIR, num_classes=NUM_CLASSES, is_train=False)
     valid_loader = DataLoader(valid_dataset, batch_size=BATCH_SIZE, shuffle=False, 
                                 collate_fn=collate_fn_pad, num_workers=NUM_WORKERS)
     
     # --- 모델(CRNN), 손실 함수(BCEWithLogitsLoss), 옵티마이저(Adam) 정의 ---
     model = DrumCRNN(num_classes=NUM_CLASSES, freq_bins=N_MELS).to(device)
-    pos_weight_tensor = torch.tensor(POSITIVE_WEIGHTS, device=device) # 클래스 불균형 문제 완화
-    criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight_tensor)
+    # pos_weight_tensor = torch.tensor(POSITIVE_WEIGHTS, device=device)
+    # criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight_tensor)
+    criterion = nn.BCEWithLogitsLoss(reduction='none')
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
     start_epoch = 1
@@ -142,8 +146,16 @@ def main():
             outputs = outputs[:, :target_len, :]
             labels = labels[:, :target_len, :]
 
-            # 모델의 출력으로 loss 계산
-            loss = criterion(outputs, labels)
+            # loss = criterion(outputs, labels)
+            loss_raw = criterion(outputs, labels)
+            timesteps_mask = (labels.sum(dim=2) > 0).unsqueeze(2)
+            timestep_weights = torch.where(
+                timesteps_mask, 
+                POSITIVE_TIMESTEP_WEIGHT, 
+                1.0
+            ).to(device)
+            weighted_loss = loss_raw * timestep_weights
+            loss = weighted_loss.mean()
 
             optimizer.zero_grad() # 이전에 계산한 가중치 별 gradient 값을 0으로 초기화
             loss.backward() # 가중치 별 gradient 계산
@@ -159,7 +171,7 @@ def main():
 
         model.eval()  # 모델을 평가 모드로 전환 (Dropout 등 비활성화)
         val_loss = 0.0
-        val_progress_bar = tqdm(valid_loader, desc=f"Epoch {epoch + 1}/{NUM_EPOCHS} [Valid]")
+        val_progress_bar = tqdm(valid_loader, desc=f"Epoch {epoch}/{NUM_EPOCHS} [Valid]")
         
         with torch.no_grad():  # 기울기 계산을 중단하여 메모리 절약 및 속도 향상
             for spectrograms, labels in val_progress_bar:
@@ -171,12 +183,22 @@ def main():
                 outputs = outputs[:, :target_len, :]
                 labels = labels[:, :target_len, :]
                 
-                loss = criterion(outputs, labels)
+                # loss = criterion(outputs, labels)
+                loss_raw = criterion(outputs, labels)
+                timesteps_mask = (labels.sum(dim=2) > 0).unsqueeze(2)
+                timestep_weights = torch.where(
+                    timesteps_mask, 
+                    POSITIVE_TIMESTEP_WEIGHT, 
+                    1.0
+                ).to(device)
+                weighted_loss = loss_raw * timestep_weights
+                loss = weighted_loss.mean()
+                
                 val_loss += loss.item()
                 val_progress_bar.set_postfix(loss=f"{loss.item():.4f}")
 
         avg_val_loss = val_loss / len(valid_loader)
-        print(f"Epoch [{epoch + 1}/{NUM_EPOCHS}] Train Loss: {avg_train_loss:.4f}, Valid Loss: {avg_val_loss:.4f}")
+        print(f"Epoch [{epoch}/{NUM_EPOCHS}] Train Loss: {avg_train_loss:.4f}, Valid Loss: {avg_val_loss:.4f}")
 
 
         # epoch이 끝난 후, 모델 저장
