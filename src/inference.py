@@ -9,10 +9,10 @@ NUM_CLASSES = 8
 BPM = 65
 TARGET_LUFS = -23.0
 
-MODEL_NAME = 'models'
+MODEL_NAME = 'models_finetune_timesteploss'
 from src.model import DrumCRNN
 
-MODEL_EPOCH = 14
+MODEL_EPOCH = 2
 MODEL_PATH = f'{MODEL_NAME}/drum_crnn_epoch_{MODEL_EPOCH}.pth'  # 학습된 모델 파일 경로
 
 filename = '좋은밤좋은꿈_(Drums)_htdemucs_ft'

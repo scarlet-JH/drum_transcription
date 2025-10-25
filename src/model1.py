@@ -21,6 +21,7 @@ class DrumCRNN(nn.Module):
         
         # ★★★ 수정: 마지막 Conv 레이어의 채널(64)을 입력받도록 변경 ★★★
         self.depth_wise_conv = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=(freq_bins//4, 1), padding=0, groups=64)
+        self.depth_wise_bn = nn.BatchNorm2d(64)
 
         # RNN 입력 크기는 풀링 2번에 맞게 그대로 유지
         rnn_input_size = 64
@@ -48,8 +49,7 @@ class DrumCRNN(nn.Module):
         x = self.dropout(x)
         # 현재 x shape: (batch, 64, freq_bins/4, time_steps/4)
         
-        # 1x1 Conv로 채널 압축
-        x = self.depth_wise_conv(x) # (batch, 64, 1, time_steps/4)
+        x = F.relu(self.depth_wise_bn(self.depth_wise_conv(x))) # (batch, 64, 1, time_steps/4)
 
         x = x.squeeze(2) # (batch, 64, time_steps/4)
 
